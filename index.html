@@ -42,6 +42,8 @@
   .reveal .verdict{font-size:1.5rem;font-weight:600;margin:0 0 .5rem}
   .reveal .big{font-size:1.15rem}
   .reveal .fine{color:var(--muted);font-size:.95rem}
+  .pts{display:inline-block;padding:.15rem .6rem;border-radius:4px;font-weight:600;color:#fff}
+  .pts.good{background:#2e7d4f} .pts.fair{background:#c98a1b} .pts.poor{background:#b3372c}
   table{border-collapse:collapse;width:100%;margin:.5rem 0 1rem;font-variant-numeric:tabular-nums}
   th,td{text-align:left;padding:.35rem .5rem;border-bottom:1px solid var(--rule)}
   td.n,th.n{text-align:right}
@@ -75,7 +77,7 @@
   <details>
     <summary>How scoring works</summary>
     <p>Each voter is worth up to 1,000 points. Say 100 percent and be right and you get all 1,000; say 100 percent and be wrong and you get nothing. Saying 50 percent always earns 750. In between, points are 1,000 × (1 − error²), where error is the gap between your probability and what happened. This is the Brier score turned upside down, so hedging is safe but knowing something pays.</p>
-    <p>After each answer you see two benchmarks: the share of Trump voters among other survey respondents who match what you were told, and the prediction of a logistic regression that also knew the person's education, religion, income, marital status, and whether they have children. The model never sees party identification.</p>
+    <p>After each answer you see what a logistic regression predicted for that person, using their age, race, gender, education, religion, income, marital status, and whether they have children. The model never sees party identification. Green means 900 points or more, amber 750 to 899, red below 750.</p>
   </details>
 </section>
 
@@ -107,7 +109,7 @@
   <h1>Results</h1>
   <p class="lede" id="headline"></p>
   <table id="scoreTable"></table>
-  <p class="note"> "People like me" is the Trump share among matching respondents in the sample, using exactly the facts you were shown; the model is a logistic regression on every demographic in the survey.</p>
+  <p class="note">The model is a logistic regression on age, race, gender, education, religion, income, marital status, and children. It never sees party identification.</p>
 
   <h2>Calibration</h2>
   <p class="note">Your guesses grouped into bins. Points on the diagonal are well calibrated; above the line means those voters went for Trump more often than you said.</p>
@@ -207,6 +209,7 @@ function likeMe(r, hint){
 let total, order, i, rounds, hint;
 function shuffle(a){for(let k=a.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[a[k],a[j]]=[a[j],a[k]]}return a}
 const fmt = x => x.toFixed(3), pct = p => Math.round(p*100)+"%";
+const anPct = p => { const n=Math.round(p*100); return ((n===8||n===11||n===18||(n>=80&&n<=89)) ? "an " : "a ") + n + "%"; };
 const brier = (arr,key) => arr.reduce((s,x)=>s+(x[key]-x.y)**2,0)/arr.length;
 const points = (p,y) => Math.round(1000*(1-(p-y)**2));        // 1000 = perfect, 750 = saying 50%, 0 = confidently wrong
 const total_ = (arr,key) => arr.reduce((s,x)=>s+points(x[key],x.y),0);
@@ -237,29 +240,40 @@ function show(){
 }
 function lock(){
   const r = DATA[order[i]], p = +$("slider").value/100, y = r.trumpvote, m = r.phat;
-  const lm = likeMe(r, hint);
-  rounds.push({p, m, y, s:lm.share, usedHint:!!hint});
+  rounds.push({p, m, y, usedHint:!!hint});
   $("slider").disabled=true; $("hintbar").classList.add("hidden");
   $("lock").classList.add("hidden"); $("next").classList.remove("hidden");
   const rev = $("reveal"); rev.className = "reveal "+(y?"trump":"harris");
   const pts = points(p,y);
   const rest = Object.entries(HINTS).filter(([k])=>k!==hint).map(([k,h])=>h.say(r));
   if (r.pid7) rest.push(PID[r.pid7] || `My party identification: ${r.pid7}.`);
+  const grade = pts>=900 ? "good" : pts>=750 ? "fair" : "poor";
+  const q = y ? m : 1-m;                       // model's probability of what actually happened
+  const surprise = q<0.35 ? "surprising" : q>0.65 ? "expected" : "tossup";
+  const badge = `<span class="pts ${grade}">${pts.toLocaleString()} points</span>`;
+  const verdicts = {
+    surprising:{good:`This was a surprising outcome, and you called it: ${badge}`,
+                fair:`This was a surprising outcome, and you hedged: ${badge}`,
+                poor:`This was a surprising outcome, and it caught you too: ${badge}`},
+    expected:  {good:`This was the likely outcome, and you called it: ${badge}`,
+                fair:`This was the likely outcome, but you hedged and left points on the table: ${badge}`,
+                poor:`This was the likely outcome, and you bet against it: ${badge}`},
+    tossup:    {good:`The model had this as a toss-up; you leaned the right way: ${badge}`,
+                fair:`The model had this as a toss-up, and so did you: ${badge}`,
+                poor:`The model had this as a toss-up; you leaned the wrong way: ${badge}`}
+  };
   rev.innerHTML = `<p class="verdict">${y ? "I voted for Trump." : "I did not vote for Trump."}</p>
-    <p class="fine">The rest of my story: ${rest.join(" ")}</p>
-    <p class="big">Your guess: there's a ${pct(p)} chance I voted for Trump. <b>You earned ${pts.toLocaleString()} points.</b></p>
-    <p class="big">Among the ${lm.n} other ${lm.desc} in this survey, ${pct(lm.share)} voted for Trump.</p>
-    ${lm.narrowed ? `<p class="fine">Too few people matched everything you were told, so the comparison group is broader than what you saw.</p>` : ""}
-    <p class="fine">A model that knew my education, religion, income, marital status, and children, plus my age, race, and gender, put my chance of voting for Trump at ${pct(m)}.</p>`;
+    <p>The rest of my story: ${rest.join(" ")}</p>
+    <p class="big">Given all of my traits, my predicted likelihood of voting for Trump was ${pct(m)}.</p>
+    <p class="big">You guessed there was ${anPct(p)} chance. ${verdicts[surprise][grade]}</p>`;
   rev.classList.remove("hidden");
   $("next").textContent = i+1===total ? "See results" : "Next voter"; $("next").focus();
   updateRunning();
 }
 function updateRunning(){
   if (!rounds.length){ $("running").innerHTML=""; return; }
-  $("running").innerHTML = `<span>Points earned <b>${total_(rounds,"p").toLocaleString()}</b></span>
-    <span>Average per voter <b>${avg(rounds,"p")}</b></span>
-    <span>People like me <b>${avg(rounds,"s")}</b></span><span>Model <b>${avg(rounds,"m")}</b></span>`;
+  $("running").innerHTML = `<span>Your points so far <b>${total_(rounds,"p").toLocaleString()}</b></span>
+    <span>The model's <b>${total_(rounds,"m").toLocaleString()}</b></span>`;
 }
 function next(){ i++; if (i<total) show(); else finish(); }
 
@@ -267,16 +281,14 @@ let chart;
 function finish(){
   $("play").classList.add("hidden"); $("results").classList.remove("hidden"); window.scrollTo(0,0);
   const base = DATA.reduce((s,r)=>s+r.trumpvote,0)/DATA.length; rounds.forEach(x=>x.b=base);
-  const you=avg(rounds,"p"), samp=avg(rounds,"s"), model=avg(rounds,"m"), naive=avg(rounds,"b");
+  const you=avg(rounds,"p"), model=avg(rounds,"m"), naive=avg(rounds,"b");
   const hints = rounds.filter(x=>x.usedHint).length;
   $("headline").textContent =
     `You earned ${total_(rounds,"p").toLocaleString()} points over ${total} voters, an average of ${you} per voter. ` +
-    (you>samp && you>model ? "You beat both benchmarks. " : you>samp ? "You beat the sample average for people like them; the model beat you. " :
-     you>naive ? "The benchmarks beat you, but you beat the base rate. " : `Always guessing ${pct(base)} would have scored higher. `) +
+    (you>model ? "You beat the model. " : you>naive ? "The model beat you, but you beat the base rate. " : `Always guessing ${pct(base)} would have scored higher. `) +
     `You asked for a hint on ${hints} of ${total} voters.`;
   $("scoreTable").innerHTML = `<tr><th></th><th class="n">Average points</th><th class="n">Total</th></tr>
     <tr class="you"><td>You</td><td class="n">${you}</td><td class="n">${total_(rounds,"p").toLocaleString()}</td></tr>
-    <tr><td>People like me (sample share)</td><td class="n">${samp}</td><td class="n">${total_(rounds,"s").toLocaleString()}</td></tr>
     <tr><td>Model using all demographics</td><td class="n">${model}</td><td class="n">${total_(rounds,"m").toLocaleString()}</td></tr>
     <tr><td>Always guessing ${pct(base)}</td><td class="n">${naive}</td><td class="n">${total_(rounds,"b").toLocaleString()}</td></tr>`;
   const bins = {}; for (const x of rounds){ const k=Math.min(9,Math.floor(x.p*10)); (bins[k]||=[]).push(x); }
@@ -290,7 +302,7 @@ function finish(){
       scales:{x:{min:0,max:1,title:{display:true,text:"Your stated probability"}}, y:{min:0,max:1,title:{display:true,text:"Share who voted for Trump"}}},
       plugins:{tooltip:{callbacks:{label:c=>`said ${pct(c.raw.x)}, actual ${pct(c.raw.y)} (n=${c.raw.n})`}}}}});
   $("copy").onclick = () => navigator.clipboard.writeText(
-    `Who did I vote for? I earned ${total_(rounds,"p").toLocaleString()} points over ${total} voters (avg ${you}). People-like-me ${samp}, model ${model}, base rate ${naive}.`)
+    `Who did I vote for? I earned ${total_(rounds,"p").toLocaleString()} points over ${total} voters (avg ${you}). Model ${model}, base rate ${naive}.`)
     .then(()=>{$("copy").textContent="Copied"; setTimeout(()=>$("copy").textContent="Copy score",1500)});
 }
 
