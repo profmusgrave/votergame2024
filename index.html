@@ -75,7 +75,7 @@
   <details>
     <summary>How scoring works</summary>
     <p>Each voter is worth up to 1,000 points. Say 100 percent and be right and you get all 1,000; say 100 percent and be wrong and you get nothing. Saying 50 percent always earns 750. In between, points are 1,000 × (1 − error²), where error is the gap between your probability and what happened. This is the Brier score turned upside down, so hedging is safe but knowing something pays.</p>
-    <p>After each answer you see two benchmarks: the share of Trump voters among other survey respondents who match what you were told, and the prediction of a logistic regression on the full set of demographics.</p>
+    <p>After each answer you see two benchmarks: the share of Trump voters among other survey respondents who match what you were told, and the prediction of a logistic regression that also knew the person's education, religion, income, marital status, and whether they have children. The model never sees party identification.</p>
   </details>
 </section>
 
@@ -244,7 +244,8 @@ function lock(){
     <p class="big">Your guess: there's a ${pct(p)} chance I voted for Trump. <b>You earned ${pts.toLocaleString()} points.</b></p>
     <p class="big">Among the ${lm.n} other ${lm.desc} in this survey, ${pct(lm.share)} voted for Trump.</p>
     ${lm.narrowed ? `<p class="fine">Too few people matched everything you were told, so the comparison group is broader than what you saw.</p>` : ""}
-    <p class="fine">A model using all of my demographics put my chance of voting for Trump at ${pct(m)}.</p>`;
+    <p class="fine">The rest of my story: ${Object.entries(HINTS).filter(([k])=>k!==hint).map(([k,h])=>h.say(r)).join(" ")}</p>
+    <p class="fine">A model that knew all of that, plus my age, race, and gender, put my chance of voting for Trump at ${pct(m)}.</p>`;
   rev.classList.remove("hidden");
   $("next").textContent = i+1===total ? "See results" : "Next voter"; $("next").focus();
   updateRunning();
