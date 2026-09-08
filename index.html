@@ -64,9 +64,11 @@
 
   <h2>Difficulty</h2>
   <div class="choice" id="modeChoice">
+    <label><input type="radio" name="mode" value="training"><span>Training — see everything</span></label>
     <label><input type="radio" name="mode" value="easy"><span>Easy — unlimited hints</span></label>
     <label><input type="radio" name="mode" value="medium" checked><span>Medium — rationed hints</span></label>
     <label><input type="radio" name="mode" value="hard"><span>Hard — no hints</span></label>
+    <label><input type="radio" name="mode" value="ultimate"><span>Ultimate — three random facts, no hints</span></label>
   </div>
 
   <h2>How many voters</h2>
@@ -177,6 +179,12 @@ const MAR = {Married:"I'm married.", Separated:"I'm separated.", Divorced:"I'm d
 const PID = {"Strong Democrat":"I'm a strong Democrat.", "Not very strong Democrat":"I'm a not-very-strong Democrat.",
   "Lean Democrat":"I'm an independent who leans Democratic.", Independent:"I'm an independent.", "Lean Republican":"I'm an independent who leans Republican.",
   "Not very strong Republican":"I'm a not-very-strong Republican.", "Strong Republican":"I'm a strong Republican.", "Not sure":"I'm not sure what party I identify with."};
+const BASE = {
+  age:     {say:r=>`I'm ${ageSelf(r.age)}.`},
+  gender4: {say:r=>({Woman:"I'm a woman.", Man:"I'm a man.", "Non-binary":"I'm non-binary."})[r.gender4] || "I'm a person."},
+  race:    {say:r=>`I'm ${RACE[r.race] ?? r.race}.`}
+};
+const ORDER = ["age","gender4","race","educ","religpew","faminc_new","marstat","parent"];
 const HINTS = {
   educ:    {label:"Education", say:r=>EDUC[r.educ]||`My education: ${r.educ}.`},
   religpew:{label:"Religion",  say:r=>RELIG[r.religpew]||`My religion: ${r.religpew}.`},
@@ -191,6 +199,17 @@ function intro(r){
   const g = GENDER[r.gender4]||"person", race = RACE[r.race] ?? r.race;
   const article = /^[aeiou]/i.test(race) ? "an" : "a";
   return `I am ${article} ${race} ${g} ${ageSelf(r.age)}.`;
+}
+const say = (k,r) => (BASE[k] || HINTS[k]).say(r);
+// Ultimate mode: pick three of the eight facts at random each round
+function pickShown(){ return shuffle([...ORDER]).slice(0,3).sort((a,b)=>ORDER.indexOf(a)-ORDER.indexOf(b)); }
+function introFrom(r, shown){
+  const basics = ["age","gender4","race"];
+  if (basics.every(k=>shown.includes(k))){
+    const extra = shown.filter(k=>!basics.includes(k)).map(k=>say(k,r));
+    return intro(r) + (extra.length ? `<span class="hint">${extra.join(" ")}</span>` : "");
+  }
+  return shown.map(k=>say(k,r)).join(" ");
 }
 
 // ---------- comparison group ----------
@@ -217,7 +236,7 @@ function likeMe(r, hint){
 }
 
 // ---------- game ----------
-let mode, total, order, i, rounds, hint, hintLeft;   // hintLeft[k] = uses remaining for category k
+let mode, total, order, i, rounds, hint, hintLeft, shown;   // hintLeft[k] = uses remaining for category k
 function shuffle(a){for(let k=a.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[a[k],a[j]]=[a[j],a[k]]}return a}
 const fmt = x => x.toFixed(3), pct = p => Math.round(p*100)+"%";
 const anPct = p => { const n=Math.round(p*100); return ((n===8||n===11||n===18||(n>=80&&n<=89)) ? "an " : "a ") + n + "%"; };
@@ -230,7 +249,7 @@ function start(){
   mode = document.querySelector('input[name=mode]:checked').value;
   total = +document.querySelector('input[name=rounds]:checked').value;
   order = shuffle([...DATA.keys()]).slice(0,total); i = 0; rounds = [];
-  const perCat = mode==="easy" ? Infinity : mode==="hard" ? 0 : Math.max(1, Math.round(0.2*total));
+  const perCat = mode==="easy" ? Infinity : mode==="medium" ? Math.max(1, Math.round(0.2*total)) : 0;
   hintLeft = Object.fromEntries(Object.keys(HINTS).map(k=>[k,perCat]));
   $("intro").classList.add("hidden"); $("results").classList.add("hidden"); $("play").classList.remove("hidden");
   show();
@@ -238,8 +257,9 @@ function start(){
 function show(){
   const r = DATA[order[i]]; hint = null;
   $("counter").textContent = `Voter ${i+1} of ${total}`;
-  $("hintsLeft").textContent = mode==="hard" ? "Hard mode: no hints" : "One hint per voter";
-  $("speech").innerHTML = intro(r);
+  shown = mode==="ultimate" ? pickShown() : mode==="training" ? [...ORDER] : ["age","gender4","race"];
+  $("hintsLeft").textContent = {hard:"Hard mode: no hints", ultimate:"Ultimate mode: three random facts", training:"Training mode: everything the model sees"}[mode] || "One hint per voter";
+  $("speech").innerHTML = introFrom(r, shown);
   const opts = $("hintOpts"); opts.innerHTML = "";
   for (const [k,h] of Object.entries(HINTS)){
     const b = document.createElement("button"); b.className="secondary small"; b.textContent = mode==="medium" ? `${h.label} (${hintLeft[k]} left)` : h.label;
@@ -248,7 +268,7 @@ function show(){
       $("hintbar").classList.add("hidden"); $("hintsLeft").textContent="Hint used"; };
     opts.appendChild(b);
   }
-  $("hintbar").classList.toggle("hidden", mode==="hard");
+  $("hintbar").classList.toggle("hidden", !(mode==="easy"||mode==="medium"));
   $("hintbar").querySelector("span").textContent = mode==="medium" ? "Ask me one more thing (each category can be used on only 20% of voters):" : "Ask me one more thing:";
   $("slider").value=50; $("pnum").textContent=50; $("slider").disabled=false;
   $("lock").classList.remove("hidden"); $("next").classList.add("hidden"); $("reveal").classList.add("hidden");
@@ -261,7 +281,7 @@ function lock(){
   $("lock").classList.add("hidden"); $("next").classList.remove("hidden");
   const rev = $("reveal"); rev.className = "reveal "+(y?"trump":"harris");
   const pts = points(p,y);
-  const rest = Object.entries(HINTS).filter(([k])=>k!==hint).map(([k,h])=>h.say(r));
+  const rest = ORDER.filter(k=>!shown.includes(k) && k!==hint).map(k=>say(k,r));
   if (r.pid7) rest.push(PID[r.pid7] || `My party identification: ${r.pid7}.`);
   const grade = pts>=900 ? "good" : pts>=750 ? "fair" : "poor";
   const q = y ? m : 1-m;                       // model's probability of what actually happened
@@ -279,7 +299,7 @@ function lock(){
                 poor:`The model had this as a toss-up; you leaned the wrong way: ${badge}`}
   };
   rev.innerHTML = `<p class="verdict">${y ? "I voted for Trump." : "I did not vote for Trump."}</p>
-    <p>The rest of my story: ${rest.join(" ")}</p>
+    ${rest.length ? `<p>The rest of my story: ${rest.join(" ")}</p>` : ""}
     <p class="big">Given all of my traits, my predicted likelihood of voting for Trump was ${pct(m)}.</p>
     <p class="big">You guessed there was ${anPct(p)} chance. ${verdicts[surprise][grade]}</p>`;
   rev.classList.remove("hidden");
@@ -301,12 +321,12 @@ function finish(){
   $("headline").textContent =
     `You earned ${total_(rounds,"p").toLocaleString()} points over ${total} voters, an average of ${you} per voter. ` +
     (you>model ? "You beat the model. " : you>naive ? "The model beat you, but you beat the base rate. " : `Always guessing ${pct(base)} would have scored higher. `) +
-    (mode==="hard" ? "Hard mode: no hints." : `You asked for a hint on ${hints} of ${total} voters.`);
+    ({hard:"Hard mode: no hints.", ultimate:"Ultimate mode: three random facts per voter, no hints.", training:"Training mode: you saw everything the model saw."}[mode] || `You asked for a hint on ${hints} of ${total} voters.`);
   $("scoreTable").innerHTML = `<tr><th></th><th class="n">Average points</th><th class="n">Total</th></tr>
     <tr class="you"><td>You</td><td class="n">${you}</td><td class="n">${total_(rounds,"p").toLocaleString()}</td></tr>
     <tr><td>Model using all demographics</td><td class="n">${model}</td><td class="n">${total_(rounds,"m").toLocaleString()}</td></tr>
     <tr><td>Always guessing ${pct(base)}</td><td class="n">${naive}</td><td class="n">${total_(rounds,"b").toLocaleString()}</td></tr>`;
-  const modeLabel = {easy:"easy", medium:"medium", hard:"hard"}[mode];
+  const modeLabel = mode;
   const shareText = `Who did I vote for? I earned ${total_(rounds,"p").toLocaleString()} points over ${total} voters on ${modeLabel} mode (avg ${you}). Model ${model}, base rate ${naive}.`;
   $("copy").onclick = () => navigator.clipboard.writeText(shareText + " " + location.href.split("?")[0])
     .then(()=>{$("copy").textContent="Copied"; setTimeout(()=>$("copy").textContent="Copy score",1500)});
