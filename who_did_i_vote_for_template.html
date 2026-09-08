@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who did I vote for?</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{--paper:#f6f5f0;--ink:#1e2430;--muted:#6b7280;--rule:#d9d6cc;--dem:#2b5aa5;--rep:#c0392b;--neutral:#8a8f99;--panel:#fff}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;font-size:17px;line-height:1.5}
+  main{max-width:600px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+  h1{font-size:2rem;font-weight:600;letter-spacing:-.01em;margin:0 0 .25rem}
+  h2{font-size:1.2rem;font-weight:600;margin:1.5rem 0 .5rem}
+  p{margin:.5rem 0}
+  .lede{color:var(--muted);margin-bottom:1.5rem}
+  button{font:inherit;cursor:pointer;border:1.5px solid var(--ink);background:var(--ink);color:#fff;padding:.55rem 1.1rem;border-radius:4px}
+  button.secondary{background:transparent;color:var(--ink)}
+  button.small{padding:.35rem .8rem;font-size:.95rem}
+  button:disabled{opacity:.4;cursor:default}
+  button:focus-visible,input:focus-visible{outline:3px solid #f3c969;outline-offset:2px}
+  .hidden{display:none}
+  .choice{display:flex;gap:.6rem;flex-wrap:wrap;margin:.5rem 0 1rem}
+  .choice label{border:1.5px solid var(--rule);border-radius:4px;padding:.5rem .9rem;cursor:pointer;background:var(--panel)}
+  .choice input{margin-right:.4rem}
+  .choice input:checked+span{font-weight:600}
+  .topline{display:flex;justify-content:space-between;color:var(--muted);font-size:.95rem;border-bottom:1px solid var(--rule);padding-bottom:.5rem;margin-bottom:1.5rem}
+  .speech{font-size:1.75rem;line-height:1.3;font-weight:600;margin:0 0 .5rem}
+  .speech .hint{display:block;font-size:1.25rem;font-weight:400;margin-top:.5rem}
+  .hintbar{margin:.5rem 0 1rem;color:var(--muted);font-size:.95rem}
+  .hintbar .opts{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem}
+  .gauge{margin:1.5rem 0 .5rem}
+  .gauge .num{font-size:3.2rem;font-weight:600;line-height:1;text-align:center;font-variant-numeric:tabular-nums}
+  .gauge .num small{font-size:1rem;font-weight:400;color:var(--muted);display:block;margin-top:.2rem}
+  .gauge input[type=range]{width:100%;margin:1rem 0 .3rem;accent-color:var(--ink)}
+  .ends{display:flex;justify-content:space-between;font-size:.9rem;color:var(--muted)}
+  .ends .l{color:var(--dem)} .ends .r{color:var(--rep)}
+  .actions{display:flex;gap:.75rem;margin-top:1rem;align-items:center;flex-wrap:wrap}
+  .reveal{margin-top:1.5rem;padding:1rem 1.25rem;border-radius:6px;border-left:6px solid var(--neutral);background:var(--panel)}
+  .reveal.trump{border-left-color:var(--rep)} .reveal.harris{border-left-color:var(--dem)}
+  .reveal .verdict{font-size:1.5rem;font-weight:600;margin:0 0 .5rem}
+  .reveal .big{font-size:1.15rem}
+  .reveal .fine{color:var(--muted);font-size:.95rem}
+  table{border-collapse:collapse;width:100%;margin:.5rem 0 1rem;font-variant-numeric:tabular-nums}
+  th,td{text-align:left;padding:.35rem .5rem;border-bottom:1px solid var(--rule)}
+  td.n,th.n{text-align:right}
+  tr.you td{font-weight:600}
+  .note{color:var(--muted);font-size:.9rem}
+  canvas{background:var(--panel);border:1px solid var(--rule);border-radius:6px;padding:.5rem}
+  .running{display:flex;gap:1.5rem;font-variant-numeric:tabular-nums;font-size:.95rem;margin-top:1rem;color:var(--muted);flex-wrap:wrap}
+  .running b{color:var(--ink)}
+  details{margin-top:1rem} summary{cursor:pointer;color:var(--muted)}
+  @media (prefers-reduced-motion:no-preference){.reveal{animation:in .25s ease-out}}
+  @keyframes in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<main>
+
+<section id="intro">
+  <h1>Who did I vote for?</h1>
+  <p class="lede">Real people from the 2024 Cooperative Election Study introduce themselves in one sentence. You say how likely it is they voted for Trump. You may ask for one more fact about them. Then they tell you, and you see how people like them voted.</p>
+
+  <h2>How many voters</h2>
+  <div class="choice" id="roundChoice">
+    <label><input type="radio" name="rounds" value="10"><span>10</span></label>
+    <label><input type="radio" name="rounds" value="20" checked><span>20</span></label>
+    <label><input type="radio" name="rounds" value="40"><span>40</span></label>
+  </div>
+
+  <button id="start">Start</button>
+
+  <details>
+    <summary>How scoring works</summary>
+    <p>Each guess is a probability. If the person voted for Trump, your error is (1 − guess)²; if not, it's guess². The average over all rounds is your Brier score. Zero is perfect; 0.25 is what you get by always saying 50 percent. Saying 100 percent and being wrong costs a full point, so confidence pays only when it's earned.</p>
+    <p>After each answer you see two benchmarks: the share of Trump voters among other survey respondents who match what you were told, and the prediction of a logistic regression on the full set of demographics.</p>
+  </details>
+</section>
+
+<section id="play" class="hidden">
+  <div class="topline"><span id="counter"></span><span id="hintsLeft"></span></div>
+  <p class="speech" id="speech"></p>
+
+  <div class="hintbar" id="hintbar">
+    <span>Ask me one more thing:</span>
+    <div class="opts" id="hintOpts"></div>
+  </div>
+
+  <div class="gauge">
+    <div class="num"><span id="pnum">50</span>%<small>chance I voted for Trump</small></div>
+    <input type="range" id="slider" min="0" max="100" step="5" value="50" aria-label="Probability of Trump vote">
+    <div class="ends"><span class="l">Certainly Harris</span><span class="r">Certainly Trump</span></div>
+  </div>
+
+  <div class="actions">
+    <button id="lock">Lock in</button>
+    <button id="next" class="secondary hidden">Next voter</button>
+  </div>
+
+  <div id="reveal" class="reveal hidden"></div>
+  <div class="running" id="running"></div>
+</section>
+
+<section id="results" class="hidden">
+  <h1>Results</h1>
+  <p class="lede" id="headline"></p>
+  <table id="scoreTable"></table>
+  <p class="note">Skill score = 1 − (your Brier ÷ reference Brier). Positive means you beat the reference. "People like me" is the Trump share among matching respondents in the sample, using exactly the facts you were shown.</p>
+
+  <h2>Calibration</h2>
+  <p class="note">Your guesses grouped into bins. Points on the diagonal are well calibrated; above the line means those voters went for Trump more often than you said.</p>
+  <canvas id="calib" height="300"></canvas>
+
+  <div class="actions">
+    <button id="again">Play again</button>
+    <button id="copy" class="secondary">Copy score</button>
+  </div>
+</section>
+
+</main>
+
+<script>
+const DATA = __DATA__;
+const $ = id => document.getElementById(id);
+
+// ---------- text ----------
+const GENDER = {Woman:"woman", Man:"man", "Non-binary":"non-binary person", Other:"person"};
+const RACE = {White:"White", Black:"Black", Hispanic:"Hispanic", Asian:"Asian", "Native American":"Native American",
+  "Middle Eastern":"Middle Eastern", "Two or more races":"multiracial", Other:""};
+const EDUC = {"No HS":"I didn't finish high school.", "High school graduate":"I finished high school and didn't go on to college.",
+  "Some college":"I went to college but didn't finish a degree.", "2-year":"I have an associate's degree.",
+  "4-year":"I have a bachelor's degree.", "Post-grad":"I have a graduate degree."};
+const RELIG = {Protestant:"I'm Protestant.", "Roman Catholic":"I'm Catholic.", Mormon:"I'm Mormon.",
+  "Eastern or Greek Orthodox":"I'm Orthodox Christian.", Jewish:"I'm Jewish.", Muslim:"I'm Muslim.", Buddhist:"I'm Buddhist.",
+  Hindu:"I'm Hindu.", Atheist:"I'm an atheist.", Agnostic:"I'm agnostic.", "Nothing in particular":"I'm not religious in particular.",
+  "Something else":"My religion is something else."};
+const MAR = {Married:"I'm married.", Separated:"I'm separated.", Divorced:"I'm divorced.", Widowed:"I'm widowed.",
+  "Never married":"I've never been married.", "Domestic / civil partnership":"I live with a domestic partner."};
+const HINTS = {
+  educ:    {label:"Education", say:r=>EDUC[r.educ]||`My education: ${r.educ}.`},
+  religpew:{label:"Religion",  say:r=>RELIG[r.religpew]||`My religion: ${r.religpew}.`},
+  faminc_new:{label:"Income",  say:r=>r.faminc_new==="Less than $10,000" ? "My household makes less than $10,000 a year."
+                                    : r.faminc_new==="$500,000 or more" ? "My household makes $500,000 or more a year."
+                                    : r.faminc_new==="Prefer not to say" ? "I'd rather not say what my household makes."
+                                    : `My household makes ${r.faminc_new} a year.`},
+  marstat: {label:"Marriage",  say:r=>MAR[r.marstat]||`My marital status: ${r.marstat}.`},
+  parent:  {label:"Children",  say:r=>r.parent ? "I have children." : "I don't have children."}
+};
+function intro(r){
+  const g = GENDER[r.gender4]||"person", race = RACE[r.race] ?? r.race;
+  const article = /^[aeiou]/i.test(race) ? "an" : "a";
+  return race ? `I am ${article} ${r.age}-year-old ${race} ${g}.` : `I am a ${r.age}-year-old ${g} of another racial background.`;
+}
+
+// ---------- comparison group ----------
+const band = a => a<30 ? "18–29" : a<45 ? "30–44" : a<65 ? "45–64" : "65+";
+function likeMe(r, hint){
+  // narrowest group with n >= 15, excluding this respondent
+  const tiers = [
+    {f:x=>band(x.age)===band(r.age)&&x.race===r.race&&x.gender4===r.gender4&&(hint?x[hint]===r[hint]:true), d:hint},
+    {f:x=>band(x.age)===band(r.age)&&x.race===r.race&&x.gender4===r.gender4, d:null},
+    {f:x=>x.race===r.race&&x.gender4===r.gender4, d:null, noAge:true},
+    {f:x=>x.gender4===r.gender4, d:null, noAge:true, noRace:true}
+  ];
+  for (const t of tiers){
+    const g = DATA.filter(x=>x!==r&&t.f(x));
+    if (g.length>=15 || t===tiers[tiers.length-1]){
+      const share = g.reduce((s,x)=>s+x.trumpvote,0)/Math.max(1,g.length);
+      const plural = {woman:"women", man:"men", "non-binary person":"non-binary people", person:"people"}[GENDER[r.gender4]||"person"];
+      let desc = (t.noRace ? "" : (RACE[r.race] ?? r.race) + " ") + plural + (t.noAge ? "" : ` aged ${band(r.age)}`);
+      if (t.d) desc += " who told you the same thing about " + HINTS[t.d].label.toLowerCase();
+      return {share, n:g.length, desc:desc.trim(), narrowed: !!((t!==tiers[0] && hint) || t.noAge)};
+    }
+  }
+}
+
+// ---------- game ----------
+let total, order, i, rounds, hint;
+function shuffle(a){for(let k=a.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[a[k],a[j]]=[a[j],a[k]]}return a}
+const fmt = x => x.toFixed(3), pct = p => Math.round(p*100)+"%";
+const brier = (arr,key) => arr.reduce((s,x)=>s+(x[key]-x.y)**2,0)/arr.length;
+
+function start(){
+  total = +document.querySelector('input[name=rounds]:checked').value;
+  order = shuffle([...DATA.keys()]).slice(0,total); i = 0; rounds = [];
+  $("intro").classList.add("hidden"); $("results").classList.add("hidden"); $("play").classList.remove("hidden");
+  show();
+}
+function show(){
+  const r = DATA[order[i]]; hint = null;
+  $("counter").textContent = `Voter ${i+1} of ${total}`;
+  $("hintsLeft").textContent = "One hint available";
+  $("speech").innerHTML = intro(r);
+  const opts = $("hintOpts"); opts.innerHTML = "";
+  for (const [k,h] of Object.entries(HINTS)){
+    const b = document.createElement("button"); b.className="secondary small"; b.textContent=h.label;
+    b.onclick = () => { hint=k; $("speech").insertAdjacentHTML("beforeend", `<span class="hint">${h.say(r)}</span>`);
+      $("hintbar").classList.add("hidden"); $("hintsLeft").textContent="Hint used"; };
+    opts.appendChild(b);
+  }
+  $("hintbar").classList.remove("hidden");
+  $("slider").value=50; $("pnum").textContent=50; $("slider").disabled=false;
+  $("lock").classList.remove("hidden"); $("next").classList.add("hidden"); $("reveal").classList.add("hidden");
+  updateRunning();
+}
+function lock(){
+  const r = DATA[order[i]], p = +$("slider").value/100, y = r.trumpvote, m = r.phat;
+  const lm = likeMe(r, hint);
+  rounds.push({p, m, y, s:lm.share, usedHint:!!hint});
+  $("slider").disabled=true; $("hintbar").classList.add("hidden");
+  $("lock").classList.add("hidden"); $("next").classList.remove("hidden");
+  const rev = $("reveal"); rev.className = "reveal "+(y?"trump":"harris");
+  rev.innerHTML = `<p class="verdict">${y ? "I voted for Trump." : "I did not vote for Trump."}</p>
+    <p class="big">You said ${pct(p)}. Among the ${lm.n} other ${lm.desc} in this survey, <b>${pct(lm.share)}</b> voted for Trump.</p>
+    ${lm.narrowed ? `<p class="fine">Too few people matched everything you were told, so the comparison group is broader than what you saw.</p>` : ""}
+    <p class="fine">A logit using all of my demographics put me at ${pct(m)}. Your error this round: ${fmt((p-y)**2)}; people-like-me: ${fmt((lm.share-y)**2)}; logit: ${fmt((m-y)**2)}.</p>`;
+  rev.classList.remove("hidden");
+  $("next").textContent = i+1===total ? "See results" : "Next voter"; $("next").focus();
+  updateRunning();
+}
+function updateRunning(){
+  if (!rounds.length){ $("running").innerHTML=""; return; }
+  $("running").innerHTML = `<span>Your Brier <b>${fmt(brier(rounds,"p"))}</b></span>
+    <span>People like me <b>${fmt(brier(rounds,"s"))}</b></span><span>Logit <b>${fmt(brier(rounds,"m"))}</b></span>`;
+}
+function next(){ i++; if (i<total) show(); else finish(); }
+
+let chart;
+function finish(){
+  $("play").classList.add("hidden"); $("results").classList.remove("hidden"); window.scrollTo(0,0);
+  const base = DATA.reduce((s,r)=>s+r.trumpvote,0)/DATA.length; rounds.forEach(x=>x.b=base);
+  const you=brier(rounds,"p"), samp=brier(rounds,"s"), model=brier(rounds,"m"), naive=brier(rounds,"b");
+  const hints = rounds.filter(x=>x.usedHint).length;
+  $("headline").textContent =
+    (you<samp && you<model ? "You beat both benchmarks. " : you<samp ? "You beat the sample average for people like them; the logit beat you. " :
+     you<naive ? "The benchmarks beat you, but you beat the base rate. " : `Always guessing ${pct(base)} would have done better. `) +
+    `You asked for a hint on ${hints} of ${total} voters.`;
+  $("scoreTable").innerHTML = `<tr><th></th><th class="n">Brier</th><th class="n">Your skill vs.</th></tr>
+    <tr class="you"><td>You</td><td class="n">${fmt(you)}</td><td class="n">—</td></tr>
+    <tr><td>People like me (sample share)</td><td class="n">${fmt(samp)}</td><td class="n">${fmt(1-you/samp)}</td></tr>
+    <tr><td>Logit on all demographics</td><td class="n">${fmt(model)}</td><td class="n">${fmt(1-you/model)}</td></tr>
+    <tr><td>Base rate (always ${pct(base)})</td><td class="n">${fmt(naive)}</td><td class="n">${fmt(1-you/naive)}</td></tr>`;
+  const bins = {}; for (const x of rounds){ const k=Math.min(9,Math.floor(x.p*10)); (bins[k]||=[]).push(x); }
+  const pts = Object.values(bins).map(a=>({x:a.reduce((s,x)=>s+x.p,0)/a.length, y:a.reduce((s,x)=>s+x.y,0)/a.length, n:a.length}));
+  const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  if (chart) chart.destroy();
+  chart = new Chart($("calib"), {type:"scatter",
+    data:{datasets:[{label:"You", data:pts, backgroundColor:css("--ink"), pointRadius:c=>4+Math.sqrt(c.raw.n)*2},
+      {label:"Perfect calibration", data:[{x:0,y:0},{x:1,y:1}], type:"line", borderColor:css("--rule"), borderDash:[4,4], pointRadius:0, borderWidth:1.5}]},
+    options:{animation:false, aspectRatio:1.3,
+      scales:{x:{min:0,max:1,title:{display:true,text:"Your stated probability"}}, y:{min:0,max:1,title:{display:true,text:"Share who voted for Trump"}}},
+      plugins:{tooltip:{callbacks:{label:c=>`said ${pct(c.raw.x)}, actual ${pct(c.raw.y)} (n=${c.raw.n})`}}}}});
+  $("copy").onclick = () => navigator.clipboard.writeText(
+    `Who did I vote for? (${total} voters): Brier ${fmt(you)} vs people-like-me ${fmt(samp)}, logit ${fmt(model)}, base rate ${fmt(naive)}.`)
+    .then(()=>{$("copy").textContent="Copied"; setTimeout(()=>$("copy").textContent="Copy score",1500)});
+}
+
+$("slider").addEventListener("input", e => $("pnum").textContent=e.target.value);
+$("start").onclick=start; $("lock").onclick=lock; $("next").onclick=next;
+$("again").onclick=()=>{ $("results").classList.add("hidden"); $("intro").classList.remove("hidden"); window.scrollTo(0,0); };
+document.addEventListener("keydown", e => {
+  if ($("play").classList.contains("hidden") || e.target.tagName==="BUTTON") return;
+  if (e.key==="Enter"){ if (!$("lock").classList.contains("hidden")) lock(); else next(); }
+});
+</script>
+</body>
+</html>
