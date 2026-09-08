@@ -161,6 +161,9 @@ const RELIG = {Protestant:"I'm Protestant.", "Roman Catholic":"I'm Catholic.", M
   "Something else":"My religion is something else."};
 const MAR = {Married:"I'm married.", Separated:"I'm separated.", Divorced:"I'm divorced.", Widowed:"I'm widowed.",
   "Never married":"I've never been married.", "Domestic / civil partnership":"I live with a domestic partner."};
+const PID = {"Strong Democrat":"I'm a strong Democrat.", "Not very strong Democrat":"I'm a not-very-strong Democrat.",
+  "Lean Democrat":"I'm an independent who leans Democratic.", Independent:"I'm an independent.", "Lean Republican":"I'm an independent who leans Republican.",
+  "Not very strong Republican":"I'm a not-very-strong Republican.", "Strong Republican":"I'm a strong Republican.", "Not sure":"I'm not sure what party I identify with."};
 const HINTS = {
   educ:    {label:"Education", say:r=>EDUC[r.educ]||`My education: ${r.educ}.`},
   religpew:{label:"Religion",  say:r=>RELIG[r.religpew]||`My religion: ${r.religpew}.`},
@@ -194,7 +197,7 @@ function likeMe(r, hint){
       const share = g.reduce((s,x)=>s+x.trumpvote,0)/Math.max(1,g.length);
       const plural = {woman:"women", man:"men", "non-binary person":"non-binary people", person:"people"}[GENDER[r.gender4]||"person"];
       let desc = (t.noRace ? "" : (RACE[r.race] ?? r.race) + " ") + plural + (t.noAge ? "" : ` ${band(r.age)}`);
-      if (t.d) desc += " who told you the same thing about " + HINTS[t.d].label.toLowerCase();
+      if (t.d) desc += " who had the same answer about " + HINTS[t.d].label.toLowerCase();
       return {share, n:g.length, desc:desc.trim(), narrowed: !!((t!==tiers[0] && hint) || t.noAge)};
     }
   }
@@ -240,12 +243,14 @@ function lock(){
   $("lock").classList.add("hidden"); $("next").classList.remove("hidden");
   const rev = $("reveal"); rev.className = "reveal "+(y?"trump":"harris");
   const pts = points(p,y);
+  const rest = Object.entries(HINTS).filter(([k])=>k!==hint).map(([k,h])=>h.say(r));
+  if (r.pid7) rest.push(PID[r.pid7] || `My party identification: ${r.pid7}.`);
   rev.innerHTML = `<p class="verdict">${y ? "I voted for Trump." : "I did not vote for Trump."}</p>
+    <p class="fine">The rest of my story: ${rest.join(" ")}</p>
     <p class="big">Your guess: there's a ${pct(p)} chance I voted for Trump. <b>You earned ${pts.toLocaleString()} points.</b></p>
     <p class="big">Among the ${lm.n} other ${lm.desc} in this survey, ${pct(lm.share)} voted for Trump.</p>
     ${lm.narrowed ? `<p class="fine">Too few people matched everything you were told, so the comparison group is broader than what you saw.</p>` : ""}
-    <p class="fine">The rest of my story: ${Object.entries(HINTS).filter(([k])=>k!==hint).map(([k,h])=>h.say(r)).join(" ")}</p>
-    <p class="fine">A model that knew all of that, plus my age, race, and gender, put my chance of voting for Trump at ${pct(m)}.</p>`;
+    <p class="fine">A model that knew my education, religion, income, marital status, and children, plus my age, race, and gender, put my chance of voting for Trump at ${pct(m)}.</p>`;
   rev.classList.remove("hidden");
   $("next").textContent = i+1===total ? "See results" : "Next voter"; $("next").focus();
   updateRunning();
