@@ -264,7 +264,7 @@ function lock(){
   };
   rev.innerHTML = `<p class="verdict">${y ? "I voted for Trump." : "I did not vote for Trump."}</p>
     <p>The rest of my story: ${rest.join(" ")}</p>
-    <p class="big">Given all of my traits, my predicted likelihood of voting for Trump was ${pct(m)}.</p>
+    <p class="big">Given all of my traits except party identification, my predicted likelihood of voting for Trump was ${pct(m)}.</p>
     <p class="big">You guessed there was ${anPct(p)} chance. ${verdicts[surprise][grade]}</p>`;
   rev.classList.remove("hidden");
   $("next").textContent = i+1===total ? "See results" : "Next voter"; $("next").focus();
