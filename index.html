@@ -234,7 +234,24 @@ function likeMe(r, hint){
     }
   }
 }
+// ---------- stratified draw by party ----------
+const PARTY_MIX = {dem:0.45, rep:0.45, other:0.10};
+const DEM = new Set([1,2,3,"Strong Democrat","Not very strong Democrat","Lean Democrat"]);
+const REP = new Set([5,6,7,"Lean Republican","Not very strong Republican","Strong Republican"]);
+const party = r => DEM.has(r.pid7) ? "dem" : REP.has(r.pid7) ? "rep" : "other";   // 4, 8, missing -> other
 
+function drawOrder(n){
+  const pool = {dem:[], rep:[], other:[]};
+  DATA.forEach((r,k)=>pool[party(r)].push(k));
+  for (const k in pool) shuffle(pool[k]);
+  const want = {dem:Math.round(PARTY_MIX.dem*n), rep:Math.round(PARTY_MIX.rep*n)};
+  want.other = n - want.dem - want.rep;
+  const picked = [];
+  for (const k in want) picked.push(...pool[k].splice(0, want[k]));
+  const spare = shuffle([...pool.dem, ...pool.rep, ...pool.other]);   // top up if a stratum runs short
+  while (picked.length < n && spare.length) picked.push(spare.pop());
+  return shuffle(picked);
+}
 // ---------- game ----------
 let mode, total, order, i, rounds, hint, hintLeft, shown;   // hintLeft[k] = uses remaining for category k
 function shuffle(a){for(let k=a.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[a[k],a[j]]=[a[j],a[k]]}return a}
